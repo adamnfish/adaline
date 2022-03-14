@@ -1,0 +1,4 @@
+Adaline
+=======
+
+Neural network model.
