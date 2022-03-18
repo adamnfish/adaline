@@ -28,10 +28,10 @@ type alias SetupDataEntry =
 
 type alias TrainingData =
     { entries : List TrainingDataEntry
+    , μ : Float
     , weights : List Float
     , offsetWeight : Float
     , finished : Bool
-    , μ : Float
     }
 
 
@@ -113,45 +113,86 @@ boolAsFloat bool =
 
 advanceTraining : TrainingData -> TrainingData
 advanceTraining trainingData =
-    -- TODO: training
-    -- TODO: check if the delta is small enough to call training 'finished'
-    let
-        offsetNet =
-            1 * trainingData.offsetWeight
+    if trainingData.finished then
+        trainingData
 
-        nets : List Float
-        nets =
-            List.map
-                (\entry ->
-                    let
-                        inputValues =
-                            List.map boolAsFloat entry.inputs
+    else
+        let
+            inputCount =
+                List.length trainingData.weights
 
-                        inputNet =
-                            List.Extra.zip inputValues trainingData.weights
-                                |> List.map
-                                    (\( i, w ) -> i * w)
-                                |> List.sum
+            -- input and offset deltas for each entry in the training data
+            entryDeltas =
+                List.Extra.zip
+                    trainingData.entries
+                    trainingData.weights
+                    |> List.map
+                        (\( entry, weight ) ->
+                            let
+                                weightedSum =
+                                    trainingData.offsetWeight
+                                        + (List.map
+                                            (\inputB ->
+                                                boolAsFloat inputB * weight
+                                            )
+                                            entry.inputs
+                                            |> List.sum
+                                          )
 
-                        net =
-                            inputNet + offsetNet
+                                error =
+                                    boolAsFloat entry.desired - weightedSum
 
-                        error =
-                            boolAsFloat entry.desired - net
+                                deltaMagnitude =
+                                    error * trainingData.μ
 
-                        delta =
-                            error * trainingData.μ
+                                entryInputDeltas =
+                                    List.map
+                                        (\i ->
+                                            boolAsFloat i * deltaMagnitude
+                                        )
+                                        entry.inputs
+                            in
+                            ( entryInputDeltas, deltaMagnitude )
+                        )
 
-                        newWeights =
-                            1
+            inputWeightDeltas =
+                List.map
+                    (\( inputDeltas, _ ) -> inputDeltas)
+                    entryDeltas
+                    |> List.Extra.transpose
+                    |> List.map
+                        (\inputDeltas ->
+                            List.sum inputDeltas / toFloat inputCount
+                        )
 
-                        -- zip weights and entries and apply (delta * x_i) to each
-                    in
-                    inputNet + offsetNet
+            offsetWeightDelta =
+                (List.map
+                    (\( _, tmp ) -> tmp)
+                    entryDeltas
+                    |> List.sum
                 )
-                trainingData.entries
-    in
-    trainingData
+                    / toFloat inputCount
+
+            trainingCompleteThreshold =
+                0.00001
+
+            trainingComplete =
+                trainingData.finished || (offsetWeightDelta < trainingCompleteThreshold) && List.all (\w -> w < trainingCompleteThreshold) inputWeightDeltas
+
+            newWeights =
+                List.Extra.zip
+                    trainingData.weights
+                    inputWeightDeltas
+                    |> List.map
+                        (\( w, d ) ->
+                            w + d
+                        )
+        in
+        { trainingData
+            | offsetWeight = trainingData.offsetWeight + offsetWeightDelta
+            , weights = newWeights
+            , finished = trainingComplete
+        }
 
 
 advanceTrainingTimes : Int -> TrainingData -> TrainingData
