@@ -7,23 +7,25 @@ import Random.Extra
 
 
 
--- TODO: carry this through subsequent steps, so it can be easily edited
+-- TODO: carry setupdata through subsequent steps, so it can be easily edited
 
 
 type alias SetupData =
+    -- entries should be an array for setup, since it changes so much
     { entries : List SetupDataEntry
     , μ : Float
     }
 
 
 type alias SetupDataEntry =
+    -- inputs should be an array for setup, since it changes so much
     { inputs : List (Maybe Bool)
     , desired : Maybe Bool
     }
 
 
 
--- TODO: carry this to the execute phase for visibility
+-- TODO: carry trainingdata to the execute phase for visibility
 
 
 type alias TrainingData =
@@ -42,7 +44,9 @@ type alias TrainingDataEntry =
 
 
 type alias ExecuteData =
-    { inputs : List ExecuteInput }
+    { inputs : List ExecuteInput
+    , offsetWeight : Float
+    }
 
 
 type alias ExecuteInput =
@@ -174,7 +178,7 @@ advanceTraining trainingData =
                     / toFloat inputCount
 
             trainingCompleteThreshold =
-                0.00001
+                0.00000001
 
             trainingComplete =
                 trainingData.finished || (offsetWeightDelta < trainingCompleteThreshold) && List.all (\w -> w < trainingCompleteThreshold) inputWeightDeltas
@@ -214,4 +218,5 @@ finishTraining trainingData =
                 }
             )
             trainingData.weights
+    , offsetWeight = trainingData.offsetWeight
     }
