@@ -8,7 +8,6 @@ import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
 import List.Extra
-import Maybe.Extra
 import Random exposing (Generator)
 import Svg
 import Svg.Attributes
@@ -42,8 +41,8 @@ type alias Model =
 type Lifecycle
     = Welcome
     | Setup String SetupData
-    | Training TrainingData
-    | Execute ExecuteData
+    | Training Bool SetupData TrainingData
+    | Execute SetupData ExecuteData
 
 
 type Msg
@@ -68,11 +67,13 @@ type SetupMsg
 
 type TrainingMsg
     = TrainSteps Int
+    | ToggleShowWorking
     | AdvanceFromTraining
 
 
 type ExecuteMsg
     = UpdateExecute ExecuteData
+    | ReturnToSetup
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -153,7 +154,7 @@ update msg model =
                                     in
                                     ( { model
                                         | seed = newSeed
-                                        , lifecycle = Training trainingData
+                                        , lifecycle = Training False currentSetupData trainingData
                                       }
                                     , Cmd.none
                                     )
@@ -189,7 +190,7 @@ update msg model =
 
         TrainingMsg trainingMsg ->
             case model.lifecycle of
-                Training currentTrainingData ->
+                Training showWorking setupData currentTrainingData ->
                     case trainingMsg of
                         TrainSteps iterations ->
                             let
@@ -197,7 +198,14 @@ update msg model =
                                     advanceTrainingTimes iterations currentTrainingData
                             in
                             ( { model
-                                | lifecycle = Training newTrainingData
+                                | lifecycle = Training showWorking setupData newTrainingData
+                              }
+                            , Cmd.none
+                            )
+
+                        ToggleShowWorking ->
+                            ( { model
+                                | lifecycle = Training (not showWorking) setupData currentTrainingData
                               }
                             , Cmd.none
                             )
@@ -209,7 +217,7 @@ update msg model =
                                         finishTraining currentTrainingData
                                 in
                                 ( { model
-                                    | lifecycle = Execute executeData
+                                    | lifecycle = Execute setupData executeData
                                   }
                                 , Cmd.none
                                 )
@@ -224,10 +232,15 @@ update msg model =
 
         ExecuteMsg executeMsg ->
             case model.lifecycle of
-                Execute currentExecuteData ->
+                Execute setupData currentExecuteData ->
                     case executeMsg of
                         UpdateExecute newExecuteData ->
-                            ( { model | lifecycle = Execute newExecuteData }
+                            ( { model | lifecycle = Execute setupData newExecuteData }
+                            , Cmd.none
+                            )
+
+                        ReturnToSetup ->
+                            ( { model | lifecycle = Setup (String.fromFloat setupData.μ) setupData }
                             , Cmd.none
                             )
 
@@ -246,10 +259,10 @@ view model =
             Setup _ _ ->
                 "Adaline | setup"
 
-            Training trainingData ->
+            Training _ _ _ ->
                 "Adaline | training"
 
-            Execute executeData ->
+            Execute _ _ ->
                 "Adaline | execute"
     , body =
         [ Element.layout [] <| ui model ]
@@ -267,11 +280,11 @@ ui model =
                 Setup μInput setupData ->
                     setupScreen model μInput setupData
 
-                Training trainingData ->
-                    trainingScreen model trainingData
+                Training showWorking setupData trainingData ->
+                    trainingScreen model showWorking trainingData
 
-                Execute executeData ->
-                    executeScreen model executeData
+                Execute setupData executeData ->
+                    executeScreen model setupData executeData
     in
     column
         [ width fill
@@ -436,8 +449,8 @@ setupEntryUi setupData entryIndex setupDataEntry =
         ]
 
 
-trainingScreen : Model -> TrainingData -> Element Msg
-trainingScreen model trainingData =
+trainingScreen : Model -> Bool -> TrainingData -> Element Msg
+trainingScreen model showWorking trainingData =
     let
         absMaxWeight =
             List.map abs (trainingData.offsetWeight :: trainingData.weights)
@@ -521,6 +534,22 @@ trainingScreen model trainingData =
                 ]
               <|
                 text "inputs"
+            , if showWorking then
+                el
+                    [ width <| px 100
+                    , Border.widthEach
+                        { bottom = 6, top = 0, left = 0, right = 0 }
+                    , Border.color <| rgb255 210 210 210
+                    ]
+                <|
+                    text "details"
+
+              else
+                Input.button
+                    (buttonAttrs False)
+                    { onPress = Just <| TrainingMsg ToggleShowWorking
+                    , label = text "i"
+                    }
             ]
         , row
             [ width fill
@@ -548,8 +577,8 @@ trainingDataEntryUi trainingData trainingDataEntry =
             (List.map boolUi trainingDataEntry.inputs)
 
 
-executeScreen : Model -> ExecuteData -> Element Msg
-executeScreen model executeData =
+executeScreen : Model -> SetupData -> ExecuteData -> Element Msg
+executeScreen model setupData executeData =
     let
         outputValue =
             executeData.offsetWeight
@@ -578,8 +607,23 @@ executeScreen model executeData =
         , spacing 12
         ]
         [ row
-            [ spacing 12
-            , width fill
+            [ width fill
+            , paddingEach
+                { bottom = 10
+                , top = 0
+                , left = 0
+                , right = 0
+                }
+            ]
+            [ Input.button
+                (buttonAttrs False)
+                { onPress = Just <| ExecuteMsg ReturnToSetup
+                , label = text "Back to setup"
+                }
+            ]
+        , row
+            [ width fill
+            , spacing 12
             ]
             [ el
                 [ width fill
@@ -703,14 +747,18 @@ boolInputUi msgFn maybeBool =
                 ]
                 [ Svg.polygon
                     [ Svg.Attributes.points "1,1 1,59 53,59 43,1"
-                    , Svg.Attributes.style "stroke: rgb(50,50,50); stroke-width: 2; cursor: pointer;"
+                    , Svg.Attributes.stroke "rgb(50,50,50)"
+                    , Svg.Attributes.strokeWidth "2"
+                    , Svg.Attributes.cursor "pointer"
                     , Svg.Attributes.fill falseBgColour
                     , Svg.Events.onClick (msgFn False)
                     ]
                     []
                 , Svg.polygon
                     [ Svg.Attributes.points "57,59 47,1 99,1 99,59"
-                    , Svg.Attributes.style "stroke: rgb(50,50,50); stroke-width: 2; cursor: pointer;"
+                    , Svg.Attributes.stroke "rgb(50,50,50)"
+                    , Svg.Attributes.strokeWidth "2"
+                    , Svg.Attributes.cursor "pointer"
                     , Svg.Attributes.fill trueBgColour
                     , Svg.Events.onClick (msgFn True)
                     ]
@@ -719,7 +767,9 @@ boolInputUi msgFn maybeBool =
                     [ Svg.Attributes.x "9"
                     , Svg.Attributes.y "40"
                     , Svg.Attributes.fill falseTextColour
-                    , Svg.Attributes.style "font-size: 22pt; font-family: sans-serif; cursor: pointer;"
+                    , Svg.Attributes.fontSize "22pt"
+                    , Svg.Attributes.fontFamily "sans-serif"
+                    , Svg.Attributes.cursor "pointer"
                     , Svg.Events.onClick (msgFn False)
                     ]
                     [ Svg.text "-1" ]
@@ -727,7 +777,9 @@ boolInputUi msgFn maybeBool =
                     [ Svg.Attributes.x "67"
                     , Svg.Attributes.y "40"
                     , Svg.Attributes.fill trueTextColour
-                    , Svg.Attributes.style "font-size: 22pt; font-family: sans-serif; cursor: pointer;"
+                    , Svg.Attributes.fontSize "22pt"
+                    , Svg.Attributes.fontFamily "sans-serif"
+                    , Svg.Attributes.cursor "pointer"
                     , Svg.Events.onClick (msgFn True)
                     ]
                     [ Svg.text "1" ]
@@ -804,14 +856,16 @@ boolUi value =
                     [ Svg.Attributes.x "9"
                     , Svg.Attributes.y "40"
                     , Svg.Attributes.fill falseTextColour
-                    , Svg.Attributes.style "font-size: 22pt; font-family: sans-serif;"
+                    , Svg.Attributes.fontFamily "sans-serif"
+                    , Svg.Attributes.fontSize "22pt"
                     ]
                     [ Svg.text "-1" ]
                 , Svg.text_
                     [ Svg.Attributes.x "67"
                     , Svg.Attributes.y "40"
                     , Svg.Attributes.fill trueTextColour
-                    , Svg.Attributes.style "font-size: 22pt; font-family: sans-serif;"
+                    , Svg.Attributes.fontFamily "sans-serif"
+                    , Svg.Attributes.fontSize "22pt"
                     ]
                     [ Svg.text "1" ]
                 ]
@@ -886,16 +940,6 @@ weightUi maxWeight weight =
           <|
             text (String.fromFloat weight)
         ]
-
-
-maybeContains : a -> Maybe a -> Bool
-maybeContains a maybeA =
-    case maybeA of
-        Just value ->
-            a == value
-
-        Nothing ->
-            False
 
 
 buttonAttrs : Bool -> List (Attribute Msg)
