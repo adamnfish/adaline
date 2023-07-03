@@ -3,12 +3,17 @@ module AdalineTests exposing (..)
 import Adaline exposing (SetupData, SetupDataEntry, TrainingData, TrainingDataEntry, advanceTraining, advanceTrainingTimes, initialTrainingData, numberOfInputs)
 import Expect exposing (FloatingPointTolerance(..))
 import Fuzz
+import List.Extra
 import Random exposing (Generator)
 import Test exposing (Test)
 
 
 suite : Test
 suite =
+    let
+        config =
+            { trainingCompleteThreshold = 0.0000001 }
+    in
     Test.describe "Adaline tests"
         [ Test.describe "numberOfInputs"
             [ Test.test "0 for empty data" <|
@@ -121,32 +126,122 @@ suite =
                         Nothing ->
                             Expect.fail "returned Nothing instead of expected value"
             ]
-        , Test.describe "advanceTraining"
-            [ Test.test "example" <|
+        , Test.describe "advanceTraining in-progress example"
+            [ Test.describe "weights check for in-progress example" <|
+                let
+                    trainingData =
+                        { entries =
+                            [ { inputs = [ True, True ]
+                              , desired = True
+                              }
+                            , { inputs = [ False, True ]
+                              , desired = False
+                              }
+                            , { inputs = [ True, False ]
+                              , desired = False
+                              }
+                            ]
+                        , μ = 0.2
+                        , finished = False
+
+                        -- the weights for each input
+                        , weights = [ -0.37, 0.79 ]
+
+                        -- the single offset weight (to normalise the output)
+                        , offsetWeight = -0.28
+                        }
+                in
+                [ Test.test "in-progress example weights" <|
+                    \_ ->
+                        let
+                            result =
+                                advanceTraining config trainingData
+
+                            weightsAsInts =
+                                List.map
+                                    (\weight ->
+                                        round <| weight * 100
+                                    )
+                                    result.weights
+                        in
+                        Expect.equal weightsAsInts [ -16, 69 ]
+                , Test.test "in-progress example offset weight" <|
+                    \_ ->
+                        let
+                            result =
+                                advanceTraining config trainingData
+                        in
+                        Expect.within (Absolute 0.01) result.offsetWeight -0.32
+                ]
+            , Test.test "finished example should see no changes, except to be marked as finished" <|
                 \_ ->
-                    1
-                        |> Expect.equal 1
+                    let
+                        trainingData =
+                            { entries =
+                                [ { inputs = [ True, True ]
+                                  , desired = True
+                                  }
+                                , { inputs = [ False, True ]
+                                  , desired = False
+                                  }
+                                , { inputs = [ True, False ]
+                                  , desired = False
+                                  }
+                                ]
+                            , μ = 0.2
+                            , finished = False
+
+                            -- the weights for each input
+                            , weights = [ 1, 1 ]
+
+                            -- single weight to normalise the output
+                            , offsetWeight = -1
+                            }
+                    in
+                    advanceTraining config trainingData
+                        |> Expect.equal
+                            { entries =
+                                [ { inputs = [ True, True ]
+                                  , desired = True
+                                  }
+                                , { inputs = [ False, True ]
+                                  , desired = False
+                                  }
+                                , { inputs = [ True, False ]
+                                  , desired = False
+                                  }
+                                ]
+                            , μ = 0.2
+                            , finished = True
+
+                            -- the weights for each input
+                            , weights = [ 1, 1 ]
+
+                            -- single weight to normalise the output
+                            , offsetWeight = -1
+                            }
             ]
         , Test.describe "advanceTrainingTimes"
             [ Test.test "0 times does nothing" <|
                 \_ ->
-                    advanceTrainingTimes 0 testTrainingData
+                    advanceTrainingTimes 0 config testTrainingData
                         |> Expect.equal testTrainingData
             , Test.test "1 time equals advanceTraining" <|
                 \_ ->
-                    advanceTrainingTimes 1 testTrainingData
-                        |> Expect.equal (advanceTraining testTrainingData)
+                    advanceTrainingTimes 1 config testTrainingData
+                        |> Expect.equal (advanceTraining config testTrainingData)
             , Test.fuzz (Fuzz.intRange 2 50) "n + 1 times equals advanceTraining and n times" <|
                 \times ->
-                    advanceTrainingTimes (times + 1) testTrainingData
-                        |> Expect.equal (advanceTraining (advanceTrainingTimes times testTrainingData))
+                    advanceTrainingTimes (times + 1) config testTrainingData
+                        |> Expect.equal (advanceTraining config (advanceTrainingTimes times config testTrainingData))
             ]
-        , Test.describe "finishTraining"
-            [ Test.test "example" <|
-                \_ ->
-                    1
-                        |> Expect.equal 1
-            ]
+        , Test.todo "finishTraining"
+
+        --[ Test.test "example" <|
+        --    \_ ->
+        --        1
+        --            |> Expect.equal 1
+        --]
         ]
 
 

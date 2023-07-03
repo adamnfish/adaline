@@ -10,15 +10,20 @@ import Random.Extra
 -- TODO: carry setupdata through subsequent steps, so it can be easily edited
 
 
+type alias Config =
+    { trainingCompleteThreshold : Float
+    }
+
+
 type alias SetupData =
-    -- entries should be an array for setup, since it changes so much
+    -- TODO: entries should be an array for setup, since it changes so much
     { entries : List SetupDataEntry
     , μ : Float
     }
 
 
 type alias SetupDataEntry =
-    -- inputs should be an array for setup, since it changes so much
+    -- TODO: inputs should be an array for setup, since it changes so much
     { inputs : List (Maybe Bool)
     , desired : Maybe Bool
     }
@@ -31,9 +36,13 @@ type alias SetupDataEntry =
 type alias TrainingData =
     { entries : List TrainingDataEntry
     , μ : Float
-    , weights : List Float
-    , offsetWeight : Float
     , finished : Bool
+
+    -- the weights for each input
+    , weights : List Float
+
+    -- single weight to normalise the output
+    , offsetWeight : Float
     }
 
 
@@ -52,6 +61,12 @@ type alias ExecuteData =
 type alias ExecuteInput =
     { input : Bool
     , weight : Float
+    }
+
+
+type alias EntryDeltas =
+    { inputDeltas : List Float
+    , offsetDelta : Float
     }
 
 
@@ -115,97 +130,106 @@ boolAsFloat bool =
         -1
 
 
-advanceTraining : TrainingData -> TrainingData
-advanceTraining trainingData =
+advanceTraining : Config -> TrainingData -> TrainingData
+advanceTraining config trainingData =
     if trainingData.finished then
         trainingData
 
     else
         let
-            inputCount =
-                List.length trainingData.weights
+            entriesCount =
+                List.length trainingData.entries |> toFloat
 
             -- input and offset deltas for each entry in the training data
+            -- this is a measure of the current 'error'
             entryDeltas =
-                List.Extra.zip
-                    trainingData.entries
-                    trainingData.weights
-                    |> List.map
-                        (\( entry, weight ) ->
-                            let
-                                weightedSum =
-                                    trainingData.offsetWeight
-                                        + (List.map
-                                            (\inputB ->
-                                                boolAsFloat inputB * weight
-                                            )
-                                            entry.inputs
-                                            |> List.sum
-                                          )
+                calculateEntryDeltas trainingData
 
-                                error =
-                                    boolAsFloat entry.desired - weightedSum
-
-                                deltaMagnitude =
-                                    error * trainingData.μ
-
-                                entryInputDeltas =
-                                    List.map
-                                        (\i ->
-                                            boolAsFloat i * deltaMagnitude
-                                        )
-                                        entry.inputs
-                            in
-                            ( entryInputDeltas, deltaMagnitude )
-                        )
-
+            -- calculate the changes to be applied to each input's weight
+            inputWeightDeltas : List Float
             inputWeightDeltas =
-                List.map
-                    (\( inputDeltas, _ ) -> inputDeltas)
-                    entryDeltas
+                let
+                    entriesInputDeltas =
+                        List.map
+                            .inputDeltas
+                            entryDeltas
+                in
+                entriesInputDeltas
+                    -- switch the focus to all of one input's entry data, instead of all inputs in one entry
                     |> List.Extra.transpose
                     |> List.map
-                        (\inputDeltas ->
-                            List.sum inputDeltas / toFloat inputCount
+                        (\entryInputDeltas ->
+                            List.sum entryInputDeltas / entriesCount
                         )
 
+            -- the change to be applied to the offset weight
             offsetWeightDelta =
-                (List.map
-                    (\( _, tmp ) -> tmp)
-                    entryDeltas
-                    |> List.sum
-                )
-                    / toFloat inputCount
+                let
+                    offsetDeltas =
+                        List.map
+                            .offsetDelta
+                            entryDeltas
+                in
+                List.sum offsetDeltas / entriesCount
 
-            trainingCompleteThreshold =
-                0.00000001
+            newInputWeights =
+                List.map2 (+) trainingData.weights inputWeightDeltas
 
             trainingComplete =
-                trainingData.finished || (offsetWeightDelta < trainingCompleteThreshold) && List.all (\w -> w < trainingCompleteThreshold) inputWeightDeltas
-
-            newWeights =
-                List.Extra.zip
-                    trainingData.weights
-                    inputWeightDeltas
-                    |> List.map
-                        (\( w, d ) ->
-                            w + d
-                        )
+                trainingData.finished
+                    || ((offsetWeightDelta < config.trainingCompleteThreshold)
+                            && List.all (\δw -> δw < config.trainingCompleteThreshold) inputWeightDeltas
+                       )
         in
         { trainingData
             | offsetWeight = trainingData.offsetWeight + offsetWeightDelta
-            , weights = newWeights
+            , weights = newInputWeights
             , finished = trainingComplete
         }
 
 
-advanceTrainingTimes : Int -> TrainingData -> TrainingData
-advanceTrainingTimes count trainingData =
+calculateEntryDeltas : TrainingData -> List EntryDeltas
+calculateEntryDeltas trainingData =
+    List.map
+        (\entry ->
+            let
+                weightedInputs =
+                    List.map2
+                        (\inputB inputWeight ->
+                            boolAsFloat inputB * inputWeight
+                        )
+                        entry.inputs
+                        trainingData.weights
+
+                weightedSum =
+                    trainingData.offsetWeight
+                        + List.sum weightedInputs
+
+                error =
+                    boolAsFloat entry.desired - weightedSum
+
+                deltaMagnitude =
+                    error * trainingData.μ
+
+                entryInputDeltas =
+                    List.map
+                        (\i ->
+                            boolAsFloat i * deltaMagnitude
+                        )
+                        entry.inputs
+            in
+            { inputDeltas = entryInputDeltas, offsetDelta = deltaMagnitude }
+        )
+        trainingData.entries
+
+
+advanceTrainingTimes : Int -> Config -> TrainingData -> TrainingData
+advanceTrainingTimes count config trainingData =
     if count <= 0 then
         trainingData
 
     else
-        advanceTrainingTimes (count - 1) (advanceTraining trainingData)
+        advanceTrainingTimes (count - 1) config (advanceTraining config trainingData)
 
 
 finishTraining : TrainingData -> ExecuteData

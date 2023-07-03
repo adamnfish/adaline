@@ -40,9 +40,9 @@ type alias Model =
 
 type Lifecycle
     = Welcome
-    | Setup String SetupData
-    | Training Bool SetupData TrainingData
-    | Execute SetupData ExecuteData
+    | Setup String Config SetupData
+    | Training Bool Config SetupData TrainingData
+    | Execute Config SetupData ExecuteData
 
 
 type Msg
@@ -96,8 +96,12 @@ update msg model =
                                         [ { desired = Nothing, inputs = [ Nothing ] } ]
                                     , μ = 0.2
                                     }
+
+                                initialConfig =
+                                    { trainingCompleteThreshold = 0.00000001
+                                    }
                             in
-                            ( { model | lifecycle = Setup (String.fromFloat μ) initialData }
+                            ( { model | lifecycle = Setup (String.fromFloat μ) initialConfig initialData }
                             , Cmd.none
                             )
 
@@ -109,7 +113,7 @@ update msg model =
 
         SetupMsg setupMsg ->
             case model.lifecycle of
-                Setup μInput currentSetupData ->
+                Setup μInput config currentSetupData ->
                     case setupMsg of
                         AddEntry ->
                             let
@@ -123,7 +127,7 @@ update msg model =
                                         | entries = List.append currentSetupData.entries [ newEntry ]
                                     }
                             in
-                            ( { model | lifecycle = Setup μInput newSetupData }
+                            ( { model | lifecycle = Setup μInput config newSetupData }
                             , Cmd.none
                             )
 
@@ -137,7 +141,7 @@ update msg model =
                                                 currentSetupData.entries
                                     }
                             in
-                            ( { model | lifecycle = Setup μInput newSetupData }
+                            ( { model | lifecycle = Setup μInput config newSetupData }
                             , Cmd.none
                             )
 
@@ -154,7 +158,7 @@ update msg model =
                                     in
                                     ( { model
                                         | seed = newSeed
-                                        , lifecycle = Training False currentSetupData trainingData
+                                        , lifecycle = Training False config currentSetupData trainingData
                                       }
                                     , Cmd.none
                                     )
@@ -166,7 +170,7 @@ update msg model =
                                     )
 
                         UpdateSetup newSetupData ->
-                            ( { model | lifecycle = Setup μInput newSetupData }
+                            ( { model | lifecycle = Setup μInput config newSetupData }
                             , Cmd.none
                             )
 
@@ -180,7 +184,7 @@ update msg model =
                                         Nothing ->
                                             currentSetupData
                             in
-                            ( { model | lifecycle = Setup newμ newSetupData }
+                            ( { model | lifecycle = Setup newμ config newSetupData }
                             , Cmd.none
                             )
 
@@ -190,22 +194,22 @@ update msg model =
 
         TrainingMsg trainingMsg ->
             case model.lifecycle of
-                Training showWorking setupData currentTrainingData ->
+                Training showWorking config setupData currentTrainingData ->
                     case trainingMsg of
                         TrainSteps iterations ->
                             let
                                 newTrainingData =
-                                    advanceTrainingTimes iterations currentTrainingData
+                                    advanceTrainingTimes iterations config currentTrainingData
                             in
                             ( { model
-                                | lifecycle = Training showWorking setupData newTrainingData
+                                | lifecycle = Training showWorking config setupData newTrainingData
                               }
                             , Cmd.none
                             )
 
                         ToggleShowWorking ->
                             ( { model
-                                | lifecycle = Training (not showWorking) setupData currentTrainingData
+                                | lifecycle = Training (not showWorking) config setupData currentTrainingData
                               }
                             , Cmd.none
                             )
@@ -217,7 +221,7 @@ update msg model =
                                         finishTraining currentTrainingData
                                 in
                                 ( { model
-                                    | lifecycle = Execute setupData executeData
+                                    | lifecycle = Execute config setupData executeData
                                   }
                                 , Cmd.none
                                 )
@@ -232,15 +236,15 @@ update msg model =
 
         ExecuteMsg executeMsg ->
             case model.lifecycle of
-                Execute setupData currentExecuteData ->
+                Execute config setupData currentExecuteData ->
                     case executeMsg of
                         UpdateExecute newExecuteData ->
-                            ( { model | lifecycle = Execute setupData newExecuteData }
+                            ( { model | lifecycle = Execute config setupData newExecuteData }
                             , Cmd.none
                             )
 
                         ReturnToSetup ->
-                            ( { model | lifecycle = Setup (String.fromFloat setupData.μ) setupData }
+                            ( { model | lifecycle = Setup (String.fromFloat setupData.μ) config setupData }
                             , Cmd.none
                             )
 
@@ -256,13 +260,13 @@ view model =
             Welcome ->
                 "Adaline"
 
-            Setup _ _ ->
+            Setup _ _ _ ->
                 "Adaline | setup"
 
-            Training _ _ _ ->
+            Training _ _ _ _ ->
                 "Adaline | training"
 
-            Execute _ _ ->
+            Execute _ _ _ ->
                 "Adaline | execute"
     , body =
         [ Element.layout [] <| ui model ]
@@ -277,13 +281,13 @@ ui model =
                 Welcome ->
                     welcomeScreen model
 
-                Setup μInput setupData ->
+                Setup μInput config setupData ->
                     setupScreen model μInput setupData
 
-                Training showWorking setupData trainingData ->
+                Training showWorking config setupData trainingData ->
                     trainingScreen model showWorking trainingData
 
-                Execute setupData executeData ->
+                Execute config setupData executeData ->
                     executeScreen model setupData executeData
     in
     column
@@ -894,16 +898,7 @@ weightUi maxWeight weight =
                     [ Svg.Attributes.width "100"
                     , Svg.Attributes.height "15"
                     ]
-                    [ Svg.line
-                        [ Svg.Attributes.x1 "0"
-                        , Svg.Attributes.x2 "100"
-                        , Svg.Attributes.y1 "14"
-                        , Svg.Attributes.y2 "14"
-                        , Svg.Attributes.strokeWidth "2"
-                        , Svg.Attributes.stroke "black"
-                        ]
-                        []
-                    , Svg.polygon
+                    [ Svg.polygon
                         [ if weightBarPx == "50" then
                             Svg.Attributes.points "48,13 48,3 52,3 52,13"
 
