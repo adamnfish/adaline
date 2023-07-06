@@ -67,6 +67,7 @@ type SetupMsg
 
 type TrainingMsg
     = TrainSteps Int
+    | TrainToCompletion
     | ToggleShowWorking
     | AdvanceFromTraining
 
@@ -200,6 +201,17 @@ update msg model =
                             let
                                 newTrainingData =
                                     advanceTrainingTimes iterations config currentTrainingData
+                            in
+                            ( { model
+                                | lifecycle = Training showWorking config setupData newTrainingData
+                              }
+                            , Cmd.none
+                            )
+
+                        TrainToCompletion ->
+                            let
+                                newTrainingData =
+                                    advanceToCompletion config currentTrainingData
                             in
                             ( { model
                                 | lifecycle = Training showWorking config setupData newTrainingData
@@ -478,14 +490,6 @@ trainingScreen model showWorking trainingData =
                             (buttonAttrs False)
                             [ alignRight ]
                         )
-                        { onPress = Just <| TrainingMsg <| TrainSteps 1
-                        , label = text "Run again"
-                        }
-                    , Input.button
-                        (List.append
-                            (buttonAttrs False)
-                            [ alignRight ]
-                        )
                         { onPress = Just <| TrainingMsg AdvanceFromTraining
                         , label = text "Finish training"
                         }
@@ -497,8 +501,8 @@ trainingScreen model showWorking trainingData =
                             (buttonAttrs False)
                             [ alignRight ]
                         )
-                        { onPress = Just <| TrainingMsg <| TrainSteps 10
-                        , label = text "Run 10 iterations"
+                        { onPress = Just <| TrainingMsg <| TrainToCompletion
+                        , label = text "Train"
                         }
                     , Input.button
                         (List.append
@@ -506,7 +510,7 @@ trainingScreen model showWorking trainingData =
                             [ alignRight ]
                         )
                         { onPress = Just <| TrainingMsg <| TrainSteps 1
-                        , label = text "Run"
+                        , label = text "Single training step"
                         }
                     ]
                 )

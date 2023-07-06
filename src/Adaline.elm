@@ -232,6 +232,24 @@ advanceTrainingTimes count config trainingData =
         advanceTrainingTimes (count - 1) config (advanceTraining config trainingData)
 
 
+advanceToCompletion : Config -> TrainingData -> TrainingData
+advanceToCompletion config initialData =
+    let
+        -- protect against a diverging training process with a count limit
+        loop : Int -> TrainingData -> TrainingData
+        loop count trainingData =
+            if trainingData.finished then
+                trainingData
+
+            else if count > 5000 then
+                trainingData
+
+            else
+                loop (count + 1) (advanceTraining config trainingData)
+    in
+    loop 0 initialData
+
+
 finishTraining : TrainingData -> ExecuteData
 finishTraining trainingData =
     { inputs =
