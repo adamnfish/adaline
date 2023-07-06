@@ -59,7 +59,9 @@ type WelcomeMsg
 
 type SetupMsg
     = AddEntry
+    | RemoveEntry Int
     | AddInput
+    | RemoveInput Int
     | UpdateSetup SetupData
     | Updateμ String
     | AdvanceFromSetup
@@ -132,6 +134,18 @@ update msg model =
                             , Cmd.none
                             )
 
+                        RemoveEntry index ->
+                            let
+                                newSetupData =
+                                    { currentSetupData
+                                        | entries =
+                                            List.Extra.removeAt index currentSetupData.entries
+                                    }
+                            in
+                            ( { model | lifecycle = Setup μInput config newSetupData }
+                            , Cmd.none
+                            )
+
                         AddInput ->
                             let
                                 newSetupData =
@@ -139,6 +153,20 @@ update msg model =
                                         | entries =
                                             List.map
                                                 (\e -> { e | inputs = List.append e.inputs [ Nothing ] })
+                                                currentSetupData.entries
+                                    }
+                            in
+                            ( { model | lifecycle = Setup μInput config newSetupData }
+                            , Cmd.none
+                            )
+
+                        RemoveInput index ->
+                            let
+                                newSetupData =
+                                    { currentSetupData
+                                        | entries =
+                                            List.map
+                                                (\e -> { e | inputs = List.Extra.removeAt index e.inputs })
                                                 currentSetupData.entries
                                     }
                             in
@@ -318,6 +346,7 @@ ui model =
         , el
             [ width (fill |> maximum 900)
             , centerX
+            , paddingXY 16 0
             ]
             content
         ]
@@ -328,11 +357,7 @@ welcomeScreen model =
     column
         []
         [ Input.button
-            [ padding 8
-            , Background.color <| rgb255 220 220 220
-            , Border.width 2
-            , Border.color <| rgb255 50 50 50
-            ]
+            (buttonAttrs CtaButton False)
             { onPress = Just <| WelcomeMsg BeginTraining
             , label =
                 text "Begin training"
@@ -370,7 +395,7 @@ setupScreen model μInput setupData =
                 }
             , Input.button
                 (List.append
-                    (buttonAttrs False)
+                    (buttonAttrs CtaButton False)
                     [ alignRight ]
                 )
                 { onPress = Just <| SetupMsg AdvanceFromSetup
@@ -398,19 +423,51 @@ setupScreen model μInput setupData =
               <|
                 text "inputs"
             ]
-        , column [ spacing 4 ] <| List.indexedMap (setupEntryUi setupData) setupData.entries
-        , Input.button
-            (buttonAttrs False)
-            { onPress = Just <| SetupMsg AddEntry
-            , label = text "Add entry"
-            }
+        , column
+            [ width fill
+            , spacing 4
+            ]
+          <|
+            List.indexedMap (setupEntryUi setupData) setupData.entries
+        , row
+            [ spacing 12 ]
+            [ Input.button
+                ([ width <| px 100 ] ++ buttonAttrs AddButton False)
+                { onPress = Just <| SetupMsg AddEntry
+                , label = text "+ entry"
+                }
+            , row
+                [ spacing 4 ]
+              --[ Input.button
+              --    ([ width <| px 100 ] ++ buttonAttrs DeleteButton False)
+              --    { onPress = Just <| SetupMsg <| RemoveEntry 1
+              --    , label = text "- input"
+              --    }
+              <|
+                case setupData.entries of
+                    [] ->
+                        []
+
+                    entry :: _ ->
+                        List.indexedMap
+                            (\i _ ->
+                                Input.button
+                                    ([ width <| px 100 ] ++ buttonAttrs DeleteButton False)
+                                    { onPress = Just <| SetupMsg <| RemoveInput i
+                                    , label = text "- input"
+                                    }
+                            )
+                            entry.inputs
+            ]
         ]
 
 
 setupEntryUi : SetupData -> Int -> SetupDataEntry -> Element Msg
 setupEntryUi setupData entryIndex setupDataEntry =
     row
-        [ spacing 12 ]
+        [ width fill
+        , spacing 12
+        ]
         [ boolInputUi
             (\desired ->
                 case List.Extra.getAt entryIndex setupData.entries of
@@ -427,10 +484,12 @@ setupEntryUi setupData entryIndex setupDataEntry =
             )
             setupDataEntry.desired
         , row
-            [ spacing 4 ]
+            [ width fill
+            , spacing 4
+            ]
           <|
-            List.append
-                (List.indexedMap
+            List.concat
+                [ List.indexedMap
                     (\inputIndex currentValue ->
                         let
                             msgFn =
@@ -450,18 +509,23 @@ setupEntryUi setupData entryIndex setupDataEntry =
                         boolInputUi msgFn currentValue
                     )
                     setupDataEntry.inputs
-                )
-                (if entryIndex == 0 then
+                , if entryIndex == 0 then
                     [ Input.button
-                        (buttonAttrs False)
+                        (buttonAttrs AddButton False)
                         { onPress = Just <| SetupMsg AddInput
-                        , label = text "Add input"
+                        , label = text "+ input"
                         }
                     ]
 
-                 else
+                  else
                     []
-                )
+                , [ Input.button
+                        ([ alignRight ] ++ buttonAttrs DeleteButton False)
+                        { onPress = Just <| SetupMsg <| RemoveEntry entryIndex
+                        , label = text "- entry"
+                        }
+                  ]
+                ]
         ]
 
 
@@ -487,7 +551,7 @@ trainingScreen model showWorking trainingData =
                 (if trainingData.finished then
                     [ Input.button
                         (List.append
-                            (buttonAttrs False)
+                            (buttonAttrs CtaButton False)
                             [ alignRight ]
                         )
                         { onPress = Just <| TrainingMsg AdvanceFromTraining
@@ -498,19 +562,19 @@ trainingScreen model showWorking trainingData =
                  else
                     [ Input.button
                         (List.append
-                            (buttonAttrs False)
-                            [ alignRight ]
-                        )
-                        { onPress = Just <| TrainingMsg <| TrainToCompletion
-                        , label = text "Train"
-                        }
-                    , Input.button
-                        (List.append
-                            (buttonAttrs False)
+                            (buttonAttrs InfoButton False)
                             [ alignRight ]
                         )
                         { onPress = Just <| TrainingMsg <| TrainSteps 1
                         , label = text "Single training step"
+                        }
+                    , Input.button
+                        (List.append
+                            (buttonAttrs CtaButton False)
+                            [ alignRight ]
+                        )
+                        { onPress = Just <| TrainingMsg <| TrainToCompletion
+                        , label = text "Train"
                         }
                     ]
                 )
@@ -542,22 +606,6 @@ trainingScreen model showWorking trainingData =
                 ]
               <|
                 text "inputs"
-            , if showWorking then
-                el
-                    [ width <| px 100
-                    , Border.widthEach
-                        { bottom = 6, top = 0, left = 0, right = 0 }
-                    , Border.color <| rgb255 210 210 210
-                    ]
-                <|
-                    text "details"
-
-              else
-                Input.button
-                    (buttonAttrs False)
-                    { onPress = Just <| TrainingMsg ToggleShowWorking
-                    , label = text "i"
-                    }
             ]
         , row
             [ width fill
@@ -624,7 +672,7 @@ executeScreen model setupData executeData =
                 }
             ]
             [ Input.button
-                (buttonAttrs False)
+                (buttonAttrs InfoButton False)
                 { onPress = Just <| ExecuteMsg ReturnToSetup
                 , label = text "Back to setup"
                 }
@@ -712,7 +760,7 @@ boolInputUi : (Bool -> Msg) -> Maybe Bool -> Element Msg
 boolInputUi msgFn maybeBool =
     let
         activeBg =
-            "rgb(120,150,100)"
+            "rgb(120,150,150)"
 
         activeText =
             "rgba(0,0,0,0.8)"
@@ -798,7 +846,7 @@ boolUi : Bool -> Element Msg
 boolUi value =
     let
         activeBg =
-            "rgb(120,150,100)"
+            "rgb(180,180,180)"
 
         activeText =
             "rgba(0,0,0,0.8)"
@@ -941,16 +989,47 @@ weightUi maxWeight weight =
         ]
 
 
-buttonAttrs : Bool -> List (Attribute Msg)
-buttonAttrs selected =
-    [ padding 12
+type ButtonType
+    = CtaButton
+    | InfoButton
+    | DeleteButton
+    | AddButton
+
+
+buttonAttrs : ButtonType -> Bool -> List (Attribute Msg)
+buttonAttrs buttonType selected =
+    [ padding <|
+        case buttonType of
+            CtaButton ->
+                12
+
+            InfoButton ->
+                6
+
+            DeleteButton ->
+                6
+
+            AddButton ->
+                12
     , Border.width 2
     , Border.color <| rgb255 50 50 50
+    , Font.center
     , Background.color
         (if selected then
             rgb255 180 180 180
 
          else
-            rgba255 180 180 180 0
+            case buttonType of
+                CtaButton ->
+                    rgb255 175 195 235
+
+                InfoButton ->
+                    rgb255 230 230 240
+
+                DeleteButton ->
+                    rgb255 200 170 180
+
+                AddButton ->
+                    rgb255 190 200 180
         )
     ]
