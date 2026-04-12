@@ -6,15 +6,16 @@
     "index.html"
   ],
   "scripts": {
-    "dev": "parcel --port 3000",
+    "start": "parcel --port 3000",
     "build": "parcel build --dist-dir docs --public-url ./",
     "test": "elm-test"
   },
   "devDependencies": {
-    "@parcel/transformer-elm": "^2.9.3",
-    "elm": "^0.19.1-5",
+    "@parcel/transformer-elm": "^2.16.4",
+    "elm": "^0.19.1-6",
     "elm-test": "^0.19.1-revision7",
-    "parcel": "^2.9.3",
-    "typescript": "^5.1.6"
+    "elm-format": "^0.8.8",
+    "parcel": "^2.16.4",
+    "typescript": "^6.0.2"
   }
 }
